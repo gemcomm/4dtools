@@ -1,0 +1,281 @@
+function prof_gprm(klun,kval,kno)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  integer :: kval
+  integer :: kno
+  integer :: prof_gprm
+
+  integer :: inr,prof_getpos
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gprm = -999
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%bitprm,1)
+  
+  if(inr >= 0) then
+     inr = inr + 6
+     prof_gprm = 0
+     kval = tlprof%hdr(inr)
+  else
+     prof_gprm = inr
+  endif
+
+end function prof_gprm
+
+function prof_gi2dv(klun,kval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  integer, pointer, dimension(:) :: kval
+  integer :: kno
+  integer :: prof_gi2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gi2dv = -999
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%hdr(3),max(tlprof%hdr(2),1))
+  if(inr >= 0) then
+     prof_gi2dv = 0
+     if(associated(kval)) then
+        if(size(kval) /= tlprof%hdr(1)) then
+           deallocate(kval)
+           allocate(kval(tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(kval(tlprof%hdr(1)),STAT=istat)
+     endif
+     kval = tlprof%ndat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(1))
+  else
+     prof_gi2dv = inr
+  endif
+end function prof_gi2dv
+
+function prof_gi3dv(klun,kval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  integer, pointer, dimension(:,:) :: kval
+  integer :: kno
+  integer :: prof_gi3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gi3dv = -999 ! pointer is not associated
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%hdr(3),tlprof%hdr(2))
+
+  if(inr >= 0) then
+     prof_gi3dv = 0
+     if(associated(kval)) then
+        if(size(kval,1) /= tlprof%hdr(2) .or. size(kval,2) /= tlprof%hdr(1)) then
+           deallocate(kval)
+           allocate(kval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(kval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+     endif
+     kval = reshape(tlprof%ndat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(2)*tlprof%hdr(1)),(/tlprof%hdr(2),tlprof%hdr(1)/))
+  else
+     prof_gi3dv = inr
+  endif
+  
+end function prof_gi3dv
+
+function prof_gr2dv(klun,pval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  real, pointer, dimension(:) :: pval
+  integer :: kno
+  integer :: prof_gr2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gr2dv = -999 ! pointer is not associated
+     return
+  endif
+  inr = prof_getpos(kno,tlprof%hdr(4),max(tlprof%hdr(2),1))
+  if(inr >= 0) then
+     prof_gr2dv = 0
+     if(associated(pval)) then
+        if(size(pval) /= tlprof%hdr(1)) then
+           deallocate(pval)
+           allocate(pval(tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(pval(tlprof%hdr(1)),STAT=istat)
+     endif
+     pval = tlprof%rdat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(1))
+  else
+     prof_gr2dv = inr
+  endif
+end function prof_gr2dv
+
+function prof_gr3dv(klun,pval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  real, pointer, dimension(:,:) :: pval
+  integer :: kno
+  integer :: prof_gr3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gr3dv = -999 ! pointer is not associated
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%hdr(4),tlprof%hdr(2))
+
+  if(inr >= 0) then
+     prof_gr3dv = 0
+     if(associated(pval)) then
+        if(size(pval,1) /= tlprof%hdr(2) .or. size(pval,2) /= tlprof%hdr(1)) then
+           deallocate(pval)
+           allocate(pval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(pval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+     endif
+     pval = reshape(tlprof%rdat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(2)*tlprof%hdr(1)),(/tlprof%hdr(2),tlprof%hdr(1)/))
+  else
+     prof_gr3dv = inr
+  endif
+  
+end function prof_gr3dv
+
+function prof_gd2dv(klun,ddval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  real*8, pointer, dimension(:) :: ddval
+  integer :: kno
+  integer :: prof_gd2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gd2dv = -999 ! pointer is not associated
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%hdr(5),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+     prof_gd2dv = 0
+     if(associated(ddval)) then
+        if(size(ddval) /= tlprof%hdr(1)) then
+           deallocate(ddval)
+           allocate(ddval(tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(ddval(tlprof%hdr(1)),STAT=istat)
+     endif
+     ddval = tlprof%ddat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(1))
+  else
+     prof_gd2dv = inr
+  endif
+  
+end function prof_gd2dv
+
+function prof_gd3dv(klun,ddval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+  integer :: klun
+  real*8, pointer, dimension(:,:) :: ddval
+  integer :: kno
+  integer :: prof_gd3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos
+  type (prof), pointer :: tlprof
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_gd3dv = -999 ! pointer is not associated
+     return
+  endif
+
+  inr = prof_getpos(kno,tlprof%hdr(5),tlprof%hdr(2))
+
+  if(inr >= 0) then
+     prof_gd3dv = 0
+     if(associated(ddval)) then
+        if(size(ddval,1) /= tlprof%hdr(2) .or. size(ddval,2) /= tlprof%hdr(1)) then
+           deallocate(ddval)
+           allocate(ddval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+        endif
+     else
+        allocate(ddval(tlprof%hdr(2),tlprof%hdr(1)),STAT=istat)
+     endif
+     ddval = reshape(tlprof%ddat(inr*tlprof%hdr(1)+1:inr*tlprof%hdr(1)+tlprof%hdr(2)*tlprof%hdr(1)),(/tlprof%hdr(2),tlprof%hdr(1)/))
+  else
+     prof_gd3dv = inr
+  endif
+  
+end function prof_gd3dv
+
+

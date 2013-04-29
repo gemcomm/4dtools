@@ -1,0 +1,96 @@
+function prof_close(klun,ldrm)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_shared, only : tgprofhead,tgproftail
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+
+  ! Dummies
+  integer :: prof_close ! < 0 => problems
+  integer :: klun
+  logical, optional :: ldrm
+
+  ! Locals
+  integer :: ier,fclos,rename_c,remove_c
+  type (prof), pointer :: tlprof
+  logical :: llrm
+
+  !----------------------------------------------------------------------
+
+  llrm = .false.
+  if(present(ldrm)) llrm = ldrm
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_close = -999 ! pointer is not associated
+     return
+  else
+     if(tlprof%com == 'FILE') then
+        prof_close = fclos(tlprof%lun)
+        if (trim(tlprof%mode) == 'WRITE') &
+             ier = rename_c(trim(tlprof%name)//'.lck',trim(tlprof%name))
+        if (llrm) ier = remove_c(trim(tlprof%name))
+     elseif(tlprof%com == 'PALM') then
+        write(*,*) 'PROF_CLOSE : Closing PALM communication'
+     endif
+        
+     if (associated(tlprof%hdr)) deallocate(tlprof%hdr,STAT=ier)
+     prof_close = prof_close + ier
+     if (associated(tlprof%ndat)) deallocate(tlprof%ndat,STAT=ier)
+     prof_close = prof_close + ier
+     if (associated(tlprof%rdat)) deallocate(tlprof%rdat,STAT=ier)
+     prof_close = prof_close + ier
+     if (associated(tlprof%ddat)) deallocate(tlprof%ddat,STAT=ier)
+     prof_close = prof_close + ier
+     ! reconnecting previous and next
+     if(.not. associated(tlprof%prev)) then
+        ! This is the head of the list
+        if(associated(tlprof%next)) then
+           ! there is no previous but a next
+           tgprofhead => tlprof%next
+           nullify(tlprof%next%prev)
+        else
+           nullify(tgprofhead)
+           nullify(tgproftail)
+        endif
+     else
+        if(associated(tlprof%next)) then
+           ! there is a previous and a next
+           tlprof%prev%next => tlprof%next
+           tlprof%next%prev => tlprof%prev
+        else
+           ! there is a previous but no next
+           ! THIS is the tail
+           tgproftail => tlprof%prev
+           nullify(tlprof%prev%next)
+        endif
+     endif
+     deallocate(tlprof,STAT=prof_close)
+  endif
+
+end function prof_close

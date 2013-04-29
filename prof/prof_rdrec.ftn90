@@ -1,0 +1,163 @@
+function prof_rdrec(klun)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_shared, only : nv3d_last
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  !Dummies
+  integer :: prof_rdrec
+  integer :: klun
+
+  !Locals
+  
+  integer :: ini ! number of integer data
+  integer :: inr ! number of real data
+  integer :: ind ! number of real*8 data
+
+  ! Other declarations:
+  integer :: istat,j
+  integer :: inbits   ! number of bit in the bit parterns model
+  integer :: inoptprm ! number of optional record parameter
+  type (prof), pointer :: tlprof
+
+  prof_rdrec = -1
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     write(*,*) 'PROF_RDREC - ERROR: unable to find handle ',klun
+     prof_rdrec = -999 ! pointer is not associated
+     return
+  endif
+
+  inbits = bit_size(tlprof%bitprm)
+
+  inoptprm = 0
+  ! counting of optional parameters to allocate in nhdr
+  do j = 0, inbits - 1
+     if(btest(tlprof%bitprm,j)) inoptprm = inoptprm + 1
+  enddo
+
+  if (.not. associated(tlprof%hdr)) then
+     allocate(tlprof%hdr(inoptprm+5),STAT=istat)
+  elseif(size(tlprof%hdr) < inoptprm+5) then
+     deallocate(tlprof%hdr)
+     allocate(tlprof%hdr(inoptprm+5),STAT=istat)
+  else
+     istat = 0
+  endif
+  if (istat /= 0) then
+     write(*,*) 'RDRECCORD - ERROR: Header allocation problem'
+     prof_rdrec = istat
+     return
+  endif
+  
+  read(unit=tlprof%lun,iostat=istat) tlprof%hdr
+  if (istat /= 0) then
+     prof_rdrec = istat
+     return
+  endif
+
+  ! get the dimension of data records
+  ini = 0
+  inr = 0
+  ind = 0
+
+  do j = 0, NV3D_LAST
+     if(btest(tlprof%hdr(3),j)) ini = ini + tlprof%hdr(2)
+     if(btest(tlprof%hdr(4),j)) inr = inr + tlprof%hdr(2)
+     if(btest(tlprof%hdr(5),j)) ind = ind + tlprof%hdr(2)
+  enddo
+  do j = NV3D_LAST+1,inbits - 1
+     if(btest(tlprof%hdr(3),j)) ini = ini + 1
+     if(btest(tlprof%hdr(4),j)) inr = inr + 1
+     if(btest(tlprof%hdr(5),j)) ind = ind + 1
+  enddo
+
+  if (ini > 0) then
+     if(.not.associated(tlprof%ndat)) then
+        allocate(tlprof%ndat(ini*tlprof%hdr(1)),STAT=istat)
+     elseif(size(tlprof%ndat) < ini*tlprof%hdr(1)) then
+        deallocate(tlprof%ndat)
+        allocate(tlprof%ndat(ini*tlprof%hdr(1)),STAT=istat)
+     endif
+     if (istat /= 0) then
+        write(0,*) 'RDRECCORD - ERROR: Problem allocating integer record'
+        prof_rdrec = istat
+        return
+     endif
+     read(unit=tlprof%lun,iostat=istat) tlprof%ndat(1:ini*tlprof%hdr(1))
+     if (istat /= 0) then
+        write(*,*) 'RDRECCORD - ERROR: Unable to read integer record'
+        prof_rdrec = istat
+        return
+     endif
+  endif
+
+  if(inr > 0) then
+     if(.not.associated(tlprof%rdat)) then
+        allocate(tlprof%rdat(inr*tlprof%hdr(1)),STAT=istat)
+     elseif(size(tlprof%rdat) < inr*tlprof%hdr(1)) then
+        deallocate(tlprof%rdat)
+        allocate(tlprof%rdat(inr*tlprof%hdr(1)),STAT=istat)
+     endif
+     if (istat /= 0) then
+        write(0,*) 'RDRECCORD - ERROR: Problem allocating real record'
+        prof_rdrec = istat
+        return
+     endif
+     read(unit=tlprof%lun,iostat=istat) tlprof%rdat(1:inr*tlprof%hdr(1))
+     if (istat /= 0) then
+        write(*,*) 'RDRECCORD - ERROR: Unable to read real record'
+        prof_rdrec = istat
+        return
+     endif
+  endif
+
+  if (ind > 0) then
+     if(.not.associated(tlprof%ddat)) then
+        allocate(tlprof%ddat(ind*tlprof%hdr(1)),STAT=istat)
+     elseif(size(tlprof%ddat) < ind*tlprof%hdr(1)) then
+        deallocate(tlprof%ddat)
+        allocate(tlprof%ddat(ind*tlprof%hdr(1)),STAT=istat)
+     endif
+     if (istat /= 0) then
+        write(0,*) 'RDRECCORD - ERROR: Problem allocating real*8 record'
+        prof_rdrec = istat
+        return
+     endif
+     
+     read(unit=tlprof%lun,iostat=istat) tlprof%ddat(1:ind*tlprof%hdr(1))
+     if (istat /= 0) then
+        write(*,*) 'RDRECCORD - ERROR: Unable to read real*8 record'
+        prof_rdrec = istat
+        return
+     endif
+  endif
+
+  prof_rdrec = 0
+
+end function prof_rdrec

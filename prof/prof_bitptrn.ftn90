@@ -1,0 +1,55 @@
+function prof_bitptrn(klun,kprm,kint,kreal,kdbl)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+
+  implicit none
+
+  ! Dummies
+  integer :: prof_bitptrn ! == 0 => fine
+  integer,intent(in) :: klun
+  integer,intent(out) :: kprm,kint,kreal,kdbl
+
+  !locals
+  type (prof), pointer :: tlprof
+
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_bitptrn = -999
+     return
+  endif
+
+  kprm = tlprof%bitprm
+  kint = tlprof%hdr(3)
+  kreal = tlprof%hdr(4)
+  kdbl = tlprof%hdr(5)
+
+  prof_bitptrn = 0
+
+end function prof_bitptrn

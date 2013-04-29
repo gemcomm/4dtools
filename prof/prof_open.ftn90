@@ -1,0 +1,159 @@
+function prof_open(cdfile,cdmode,cdcom,dtsleep)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_shared, only : tgprofhead,tgproftail,jprels,nobjnbr
+  use prof_types, only : prof
+  implicit none
+
+  ! Dummies
+  integer :: prof_open ! logical unit; < 0 => problems opening CDFILE
+  character (len=*),intent(in) :: cdfile
+  character (len=*),intent(in) :: cdmode
+  character (len=*),intent(in) :: cdcom ! FILE, SOCKET or PALM
+  real*8, optional :: dtsleep
+
+  ! locals
+  integer :: ier,fnom,irels,prof_rdplm,micro_sleep,ikind,wkoffit
+  integer :: imaxthr, omp_get_max_threads, omp_set_num_threads
+  type (prof), pointer :: dtnew
+  real*8 :: dltsleep, dltsmax=2.0d0
+
+  allocate(dtnew, STAT=prof_open)
+  if(prof_open /= 0) then
+     return
+  endif
+  nullify(dtnew%hdr)
+  nullify(dtnew%ndat)
+  nullify(dtnew%rdat)
+  nullify(dtnew%ddat)
+  nullify(dtnew%prev)
+  nullify(dtnew%next)
+  if(.not. associated(tgprofhead)) then
+     tgprofhead => dtnew
+     tgproftail => dtnew
+  else
+     dtnew%prev => tgproftail
+     tgproftail%next => dtnew
+     tgproftail => dtnew
+  endif
+  if(cdmode(1:4) == 'READ') then
+     ! Get the maximum number of threads
+     imaxthr = omp_get_max_threads()
+     ! To make the threads available to other applications:
+     ! set the number of active threads to 1
+     ! while the calling application sleeps 
+     ier = omp_set_num_threads(1)
+     dtnew%mode = 'READ'
+     if(present(dtsleep)) then
+        dltsleep = dtsleep
+     else
+        dltsleep = min(0.1d0,dltsmax)
+     endif
+     if(cdcom(1:4) == 'FILE') then
+        dtnew%com = 'FILE'
+        open : do
+           ikind = wkoffit(cdfile)
+
+           if (ikind /= -3) exit open
+           
+           ier = micro_sleep(dltsleep)
+           dltsleep = min(dltsleep + dltsleep*0.2d0,dltsmax)
+        enddo open
+        ier = FNOM(prof_open,cdfile,'FTN+SEQ+UNF+OLD+R/O',0)
+        rewind (prof_open)
+        read(unit=prof_open,iostat=ier) dtnew%bitprm,irels
+        if(irels > jprels) then
+           write(*,*) 'PROF_OPEN - ERROR : Incompatible realease number'
+           prof_open = -999
+           return
+        endif
+     elseif(cdcom(1:6) == 'SOCKET') then
+        dtnew%com = 'SOCKET'
+        write(*,*) 'PROF_OPEN: ERROR - Socket communication not implemented yet'
+        prof_open = -999
+        return
+     elseif(cdcom(1:4) == 'PALM') then
+        dtnew%com = 'PALM'
+        write(	*,*) 'PROF_OPEN: ERROR - PALM communication not implemented yet'
+        prof_open = -999
+        return
+!        dtnew%name = cdfile
+        ier = prof_rdplm(dtnew,'PRM')
+        if(ier /= 0) then
+           prof_open = -998
+           return
+        endif
+        prof_open = nobjnbr
+        nobjnbr = nobjnbr - 1
+     endif
+
+     dtnew%writ = .true.
+     ! Reset the max number of threads to its previous value
+     ier = omp_set_num_threads(imaxthr)
+  elseif(cdmode(1:5) == 'WRITE') then
+     dtnew%mode = 'WRITE'
+     if(cdcom(1:4) == 'FILE') then
+          dtnew%com = 'FILE'
+        ier = FNOM(prof_open,trim(cdfile)//'.lck','FTN+SEQ+UNF+R/W',0)
+        if (ier /= 0) write(*,*) 'PROF_OPEN: ERROR - Problem opening file ',trim(cdfile)//'.lck'
+        rewind (prof_open)
+     elseif( cdcom(1:6) == 'SOCKET') then
+        dtnew%com = 'SOCKET'
+        write(*,*) 'PROF_OPEN: ERROR - Socket communication not implemented yet'
+        prof_open = -999
+        return
+     elseif(cdcom(1:4) == 'PALM') then
+        dtnew%com = 'PALM'
+        write(*,*) 'PROF_OPEN: ERROR - PALM communication not implemented yet'
+        prof_open = -999
+        return
+        prof_open = nobjnbr
+        nobjnbr = nobjnbr - 1
+!        dtnew%name = cdfile
+     endif
+     dtnew%bitprm = 0
+     dtnew%writ = .false.
+
+     allocate(dtnew%hdr(5),STAT=ier)
+     if(ier /= 0) then
+        prof_open = ier
+        return
+     endif
+     dtnew%hdr(1) = 0
+     dtnew%hdr(2) = 0
+     dtnew%hdr(3) = 0
+     dtnew%hdr(4) = 0
+     dtnew%hdr(5) = 0
+     dtnew%ipush = .false.
+     dtnew%rpush = .false.
+     dtnew%dpush = .false.
+  endif
+  
+  dtnew%name = cdfile
+  dtnew%lun = prof_open
+
+end function prof_open

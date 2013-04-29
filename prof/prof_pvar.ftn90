@@ -1,0 +1,472 @@
+function prof_pprm(klun,kval,kno)
+  !
+  !/* LibProf - Communication Library for data assimilation coupling 
+  ! * Copyright (C) 2001-2002  Data Assimilation and Satellite Meteorology Division
+  ! *                          Meteorological Service of Canada
+  ! *
+  ! * This library is free software; you can redistribute it and/or
+  ! * modify it under the terms of the GNU Lesser General Public
+  ! * License as published by the Free Software Foundation,
+  ! * version 2.1 of the License.
+  ! *
+  ! * This library is distributed in the hope that it will be useful,
+  ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  ! * Lesser General Public License for more details.
+  ! *
+  ! * You should have received a copy of the GNU Lesser General Public
+  ! * License along with this library; if not, write to the
+  ! * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
+  ! * Boston, MA 02111-1307, USA.
+  ! */
+  !
+  ! Author: Simon Pellerin, ARMA/MSC, 2001
+  !
+  ! Revision:
+  !
+
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  integer :: kval
+  integer :: kno
+  integer :: prof_pprm
+
+  integer :: inr,prof_getpos,j
+  integer, pointer, dimension(:) :: ihdr
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+
+  if(.not. associated(tlprof)) then
+     prof_pprm = -999
+     return
+  endif
+
+  if(.not.tlprof%writ) tlprof%bitprm = ibset(tlprof%bitprm,kno)
+  inr = prof_getpos(kno,tlprof%bitprm,1)
+  
+  if(inr >= 0) then
+     inr = inr + 5 ! position of the next parameters
+     
+     if(.not. tlprof%writ) then
+        allocate(ihdr(size(tlprof%hdr)+1),STAT=prof_pprm)
+        if(prof_pprm /= 0) return
+     
+        do j = 1,inr
+           ihdr(j) = tlprof%hdr(j)
+        enddo
+
+        ihdr(inr+1) = kval
+
+        do j=inr+1,size(tlprof%hdr)
+           ihdr(j+1) = tlprof%hdr(j)
+        enddo
+
+        deallocate(tlprof%hdr,STAT=prof_pprm)
+        if(prof_pprm /= 0) return
+
+        tlprof%hdr => ihdr
+     else
+        tlprof%hdr(inr+1) = kval
+     endif
+     prof_pprm = 0
+  else
+     prof_pprm = inr
+     if(tlprof%writ) write(0,*) 'Invalid parameter: inconsistant with other records'
+  endif
+
+end function prof_pprm
+
+function prof_pi2dv(klun,kval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  integer, intent(in), dimension(:) :: kval
+  integer, intent(in) :: kno
+  integer :: prof_pi2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j
+  integer, pointer, dimension(:) :: idata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pi2dv = -999
+     return
+  endif
+
+  tlprof%hdr(3) = ibset(tlprof%hdr(3),kno)
+  inr = prof_getpos(kno,tlprof%hdr(3),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+     if(tlprof%ipush) then
+        if(tlprof%hdr(1) == size(kval)) then
+           allocate(idata(size(tlprof%ndat)+tlprof%hdr(1)),STAT=prof_pi2dv)
+           if(prof_pi2dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              idata(j) = tlprof%ndat(j)
+           enddo
+           
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%ndat)
+              idata(j+tlprof%hdr(1)) = tlprof%ndat(j)
+           enddo
+           
+           deallocate(tlprof%ndat,STAT=prof_pi2dv)
+           if(prof_pi2dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pi2dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(kval)
+        allocate(idata(tlprof%hdr(1)),STAT=prof_pi2dv)
+        if(prof_pi2dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        idata(j+tlprof%hdr(1)*inr) = kval(j)
+     enddo
+
+     tlprof%ndat => idata
+     tlprof%ipush = .true.
+     prof_pi2dv = 0
+  else
+     prof_pi2dv = inr
+  endif
+  
+end function prof_pi2dv
+
+function prof_pi3dv(klun,kval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  integer, intent(in), dimension(:,:) :: kval
+  integer, intent(in) :: kno
+  integer :: prof_pi3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j,k
+  integer, pointer, dimension(:) :: idata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pi3dv = -999
+     return
+  endif
+
+  tlprof%hdr(3) = ibset(tlprof%hdr(3),kno)
+  inr = prof_getpos(kno,tlprof%hdr(3),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+
+     if(tlprof%ipush) then
+        if(tlprof%hdr(1) == size(kval,2) .and. (tlprof%hdr(2)==size(kval,1) .or. tlprof%hdr(2)==0)) then
+           if (tlprof%hdr(2) == 0) tlprof%hdr(2) = size(kval,1)
+           allocate(idata(size(tlprof%ndat)+tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pi3dv)
+           if(prof_pi3dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              idata(j) = tlprof%ndat(j)
+           enddo
+           
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%ndat)
+              idata(j+tlprof%hdr(1)*tlprof%hdr(2)) = tlprof%ndat(j)
+           enddo
+           
+           deallocate(tlprof%ndat,STAT=prof_pi3dv)
+           if(prof_pi3dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pi3dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(kval,2)
+        tlprof%hdr(2) = size(kval,1)
+        allocate(idata(tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pi3dv)
+        if(prof_pi3dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        do k = 1, tlprof%hdr(2)
+           idata((j-1)*tlprof%hdr(2)+k+tlprof%hdr(1)*inr) = kval(k,j)
+        enddo
+     enddo
+
+     tlprof%ndat => idata
+     tlprof%ipush = .true.
+     prof_pi3dv = 0
+  else
+     prof_pi3dv = inr
+  endif
+  
+end function prof_pi3dv
+
+function prof_pr2dv(klun,pval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  real, intent(in), dimension(:) :: pval
+  integer, intent(in) :: kno
+  integer :: prof_pr2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j
+  real, pointer, dimension(:) :: zdata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pr2dv = -999
+     return
+  endif
+
+  tlprof%hdr(4) = ibset(tlprof%hdr(4),kno)
+  inr = prof_getpos(kno,tlprof%hdr(4),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+     
+     if(tlprof%rpush) then
+        if(tlprof%hdr(1) == size(pval)) then
+
+           allocate(zdata(size(tlprof%rdat)+tlprof%hdr(1)),STAT=prof_pr2dv)
+           if(prof_pr2dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              zdata(j) = tlprof%rdat(j)
+           enddo
+           
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%rdat)
+              zdata(j+tlprof%hdr(1)) = tlprof%rdat(j)
+           enddo
+           
+           deallocate(tlprof%rdat,STAT=prof_pr2dv)
+           if(prof_pr2dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pr2dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(pval)
+        allocate(zdata(tlprof%hdr(1)),STAT=prof_pr2dv)
+        if(prof_pr2dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        zdata(j+tlprof%hdr(1)*inr) = pval(j)
+     enddo
+
+     tlprof%rdat => zdata
+     tlprof%rpush = .true.
+     prof_pr2dv = 0
+  else
+     prof_pr2dv = inr
+  endif
+  
+end function prof_pr2dv
+
+function prof_pr3dv(klun,pval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  real, intent(in), dimension(:,:) :: pval
+  integer, intent(in) :: kno
+  integer :: prof_pr3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j,k
+  real, pointer, dimension(:) :: zdata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pr3dv = -999
+     return
+  endif
+
+  tlprof%hdr(4) = ibset(tlprof%hdr(4),kno)
+  inr = prof_getpos(kno,tlprof%hdr(4),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+     
+     if(tlprof%rpush) then
+        if(tlprof%hdr(1) == size(pval,2) .and. (tlprof%hdr(2)==size(pval,1) .or. tlprof%hdr(2)==0)) then
+           if (tlprof%hdr(2) == 0) tlprof%hdr(2) = size(pval,1)
+           allocate(zdata(size(tlprof%rdat)+tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pr3dv)
+           if(prof_pr3dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              zdata(j) = tlprof%rdat(j)
+           enddo
+           
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%rdat)
+              zdata(j+tlprof%hdr(1)*tlprof%hdr(2)) = tlprof%rdat(j)
+           enddo
+           
+           deallocate(tlprof%rdat,STAT=prof_pr3dv)
+           if(prof_pr3dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pr3dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(pval,2)
+        tlprof%hdr(2) = size(pval,1)
+        allocate(zdata(tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pr3dv)
+        if(prof_pr3dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        do k = 1, tlprof%hdr(2)
+           zdata((j-1)*tlprof%hdr(2)+k+tlprof%hdr(1)*inr) = pval(k,j)
+        enddo
+     enddo
+
+     tlprof%rdat => zdata
+     tlprof%rpush = .true.
+     prof_pr3dv = 0
+  else
+     prof_pr3dv = inr
+  endif
+  
+end function prof_pr3dv
+
+function prof_pd2dv(klun,ddval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  real*8, intent(in), dimension(:) :: ddval
+  integer, intent(in) :: kno
+  integer :: prof_pd2dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j
+  real*8, pointer, dimension(:) :: dldata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pd2dv = -999
+     return
+  endif
+
+  tlprof%hdr(5) = ibset(tlprof%hdr(5),kno)
+  inr = prof_getpos(kno,tlprof%hdr(5),max(tlprof%hdr(2),1))
+
+  if(inr >= 0) then
+     
+     if(tlprof%dpush) then
+        if(tlprof%hdr(1) == size(ddval)) then
+
+           allocate(dldata(size(tlprof%ddat)+tlprof%hdr(1)),STAT=prof_pd2dv)
+           if(prof_pd2dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              dldata(j) = tlprof%ddat(j)
+           enddo
+           
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%ddat)
+              dldata(j+tlprof%hdr(1)) = tlprof%ddat(j)
+           enddo
+           
+           deallocate(tlprof%ddat,STAT=prof_pd2dv)
+           if(prof_pd2dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pd2dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(ddval)
+        allocate(dldata(tlprof%hdr(1)),STAT=prof_pd2dv)
+        if(prof_pd2dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        dldata(j+tlprof%hdr(1)*inr) = ddval(j)
+     enddo
+
+     tlprof%ddat => dldata
+     tlprof%dpush = .true.
+     prof_pd2dv = 0
+  else
+     prof_pd2dv = inr
+  endif
+  
+end function prof_pd2dv
+
+function prof_pd3dv(klun,ddval,kno)
+  use prof_types, only : prof
+  use prof_priv_int, only : prof_find
+  implicit none
+  integer :: klun
+  real*8, intent(in), dimension(:,:) :: ddval
+  integer, intent(in) :: kno
+  integer :: prof_pd3dv
+
+  !locals
+  integer :: inr,istat,prof_getpos,j,k
+  real*8, pointer, dimension(:) :: dldata
+  type (prof), pointer :: tlprof
+
+  tlprof => prof_find(klun)
+  if(.not. associated(tlprof)) then
+     prof_pd3dv = -999
+     return
+  endif
+
+  tlprof%hdr(5) = ibset(tlprof%hdr(5),kno)
+  inr = prof_getpos(kno,tlprof%hdr(5),max(tlprof%hdr(2),1))
+  if(inr >= 0) then
+     if(tlprof%dpush) then
+        if(tlprof%hdr(1) == size(ddval,2) .and. (tlprof%hdr(2)==size(ddval,1) .or. tlprof%hdr(2)==0)) then
+           if (tlprof%hdr(2) == 0) tlprof%hdr(2) = size(ddval,1)
+           allocate(dldata(size(tlprof%ddat)+tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pd3dv)
+           if(prof_pd3dv /= 0) return
+           
+           do j = 1,tlprof%hdr(1)*inr
+              dldata(j) = tlprof%ddat(j)
+           enddo
+           do j = tlprof%hdr(1)*inr+1,size(tlprof%ddat)
+              dldata(j+tlprof%hdr(1)*tlprof%hdr(2)) = tlprof%ddat(j)
+           enddo
+           deallocate(tlprof%ddat,STAT=prof_pd3dv)
+           if(prof_pd3dv /= 0) return
+        else
+           write(0,*) 'ERROR: Inconsistant data array size'
+           prof_pd3dv = -1
+           return
+        endif
+     else
+        tlprof%hdr(1) = size(ddval,2)
+        tlprof%hdr(2) = size(ddval,1)
+        allocate(dldata(tlprof%hdr(1)*tlprof%hdr(2)),STAT=prof_pd3dv)
+        if(prof_pd3dv /= 0) return
+     endif
+
+     do j = 1, tlprof%hdr(1)
+        do k = 1, tlprof%hdr(2)
+           dldata((j-1)*tlprof%hdr(2)+k+tlprof%hdr(1)*inr) = ddval(k,j)
+        enddo
+     enddo
+     tlprof%ddat => dldata
+     tlprof%dpush = .true.
+     prof_pd3dv = 0
+  else
+     prof_pd3dv = inr
+  endif
+
+end function prof_pd3dv
